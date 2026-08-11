@@ -1,0 +1,125 @@
+#stage {
+  position: relative;
+  width: 38%;
+  min-width: 320px;
+  max-width: 560px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+}
+
+#stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle 480px at 50% 78%, rgba(192, 132, 252, 0.16), transparent 70%),
+    radial-gradient(circle 380px at 50% 60%, rgba(249, 168, 212, 0.08), transparent 70%);
+  pointer-events: none;
+}
+
+.stage-eyebrow {
+  position: absolute;
+  top: 28px;
+  left: 28px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  z-index: 3;
+}
+
+.character-wrap {
+  position: relative;
+  width: min(78%, 420px);
+  aspect-ratio: 700 / 900;
+  animation: idle-breathe 6s ease-in-out infinite;
+}
+
+@keyframes idle-breathe {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.char-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  will-change: opacity, transform;
+  transition: opacity 300ms var(--ease), transform 300ms var(--ease);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.char-layer.pulse {
+  transform: scale(1.015);
+}
+
+.stage-name-tag {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  z-index: 3;
+  text-align: center;
+}
+
+.stage-name-tag .name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.stage-name-tag .mood-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+  letter-spacing: 0.04em;
+  min-height: 14px;
+}
+
+@media (max-width: 860px) {
+  #stage {
+    width: 100%;
+    max-width: none;
+    height: 32vh;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .character-wrap {
+    width: auto;
+    height: 100%;
+    aspect-ratio: auto;
+  }
+  .stage-eyebrow {
+    top: 14px;
+    left: 14px;
+  }
+  .stage-name-tag {
+    bottom: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  #stage {
+    height: 28vh;
+  }
+}

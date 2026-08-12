@@ -3,9 +3,6 @@
   width: 38%;
   min-width: 320px;
   max-width: 560px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
   overflow: hidden;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
@@ -32,7 +29,17 @@
 }
 
 .character-wrap {
-  position: relative;
+  /* Absolutely positioned within #stage instead of being a flex child —
+     this was the actual bug. As a flex item, this box's only content is
+     two position:absolute <img> tags, which contribute nothing to its
+     intrinsic size. Deriving "width: auto" from "height: 100%" via
+     aspect-ratio works in plain block/absolute layout, but combined
+     with flexbox's own auto-sizing algorithm it was unreliable across
+     browsers and collapsed to zero width on mobile. Taking it out of
+     flow entirely removes that interaction. */
+  position: absolute;
+  left: 50%;
+  bottom: 0;
   width: min(78%, 420px);
   aspect-ratio: 700 / 900;
   animation: idle-breathe 6s ease-in-out infinite;
@@ -41,10 +48,10 @@
 @keyframes idle-breathe {
   0%,
   100% {
-    transform: translateY(0);
+    transform: translateX(-50%) translateY(0);
   }
   50% {
-    transform: translateY(-6px);
+    transform: translateX(-50%) translateY(-6px);
   }
 }
 
@@ -105,9 +112,11 @@
     flex-shrink: 0;
   }
   .character-wrap {
-    width: auto;
     height: 100%;
-    aspect-ratio: auto;
+    width: auto;
+    /* aspect-ratio inherited from the base rule (700/900) — now that
+       this box is out of flow entirely (see base rule), width derives
+       cleanly from the 100% height with no flexbox involved. */
   }
   .stage-eyebrow {
     top: 14px;

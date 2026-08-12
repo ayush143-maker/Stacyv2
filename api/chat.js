@@ -57,19 +57,63 @@ function getExpressionFromResponse(text) {
   return "quiet";
 }
 
-function parseStacyPayload(rawText) {
-  let cleaned = rawText.trim();
-  cleaned = cleaned.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "");
+// Robust against: clean JSON, JSON wrapped in markdown fences, JSON with
+// stray text before/after it, and truncated/malformed JSON (e.g. the
+// model got cut off mid-string). Each stage is a fallback for the one
+// before it — the goal is to NEVER send raw {"reply": ...} scaffolding
+// to the client.
+function tryParseStacyJSON(str) {
   try {
-    const parsed = JSON.parse(cleaned);
-    if (parsed && typeof parsed.reply === "string") {
+    const parsed = JSON.parse(str);
+    if (parsed && typeof parsed.reply === "string" && parsed.reply.trim()) {
       const mood = MOODS.includes(parsed.mood) ? parsed.mood : getExpressionFromResponse(parsed.reply);
       return { reply: parsed.reply.trim(), mood };
     }
   } catch (e) {
-    // fall through to heuristic fallback below
+    // not valid JSON, let caller try the next stage
   }
-  return { reply: cleaned, mood: getExpressionFromResponse(cleaned) };
+  return null;
+}
+
+function parseStacyPayload(rawText) {
+  let cleaned = (rawText || "").trim();
+  cleaned = cleaned.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+
+  // Stage 1: the whole cleaned string is valid JSON.
+  const direct = tryParseStacyJSON(cleaned);
+  if (direct) return direct;
+
+  // Stage 2: valid JSON exists somewhere inside extra text — slice out
+  // the outermost {...} block and try that.
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const sliced = tryParseStacyJSON(cleaned.slice(firstBrace, lastBrace + 1));
+    if (sliced) return sliced;
+  }
+
+  // Stage 3: JSON is malformed/truncated, but the "reply" field's string
+  // value is still intact — pull it out with a regex instead of a parser.
+  const replyMatch = cleaned.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (replyMatch) {
+    const extracted = replyMatch[1].replace(/\\"/g, '"').replace(/\\n/g, "\n").replace(/\\\\/g, "\\").trim();
+    if (extracted) {
+      const moodMatch = cleaned.match(/"mood"\s*:\s*"([a-z]+)"/i);
+      const mood = moodMatch && MOODS.includes(moodMatch[1]) ? moodMatch[1] : getExpressionFromResponse(extracted);
+      return { reply: extracted, mood };
+    }
+  }
+
+  // Stage 4: nothing structured recognized — strip obvious JSON
+  // scaffolding characters so at worst the client gets plain text,
+  // never a raw {"reply": ...} blob.
+  const scaffoldStripped = cleaned
+    .replace(/^\{?\s*"?reply"?\s*:\s*"/i, "")
+    .replace(/"\s*,?\s*"?mood"?[\s\S]*$/i, "")
+    .replace(/"?\s*\}\s*$/, "")
+    .trim();
+  const finalReply = scaffoldStripped || cleaned;
+  return { reply: finalReply, mood: getExpressionFromResponse(finalReply) };
 }
 
 function buildContents(history, message) {
@@ -112,7 +156,28 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         contents: buildContents(history, message),
         systemInstruction: { parts: [{ text: STACY_SYSTEM_PROMPT }] },
-        generationConfig: { temperature: 0.9, maxOutputTokens: 400 },
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 700,
+          // Structured output: forces Gemini to emit JSON matching this
+          // exact schema, instead of just hoping it follows the prompt's
+          // formatting instructions. This is what actually prevents the
+          // {"reply": ...} scaffolding from leaking into the chat — the
+          // parseStacyPayload() fallback chain below is just a safety
+          // net for edge cases, not the primary defense anymore.
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              reply: { type: "STRING" },
+              mood: {
+                type: "STRING",
+                enum: ["happy", "sad", "irritated", "confused", "vulnerable", "quiet"],
+              },
+            },
+            required: ["reply", "mood"],
+          },
+        },
       }),
     });
 
